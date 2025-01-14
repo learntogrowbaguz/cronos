@@ -1,14 +1,14 @@
-vue/node_modules
-vue/dist
 release/
 /build
-/coverage.txt
+coverage.txt
 __pycache__
 /dist
 /vendor
+go.work
+go.work.sum
 
 # nix
-/result
+result
 
 # pystarport
 /data
@@ -18,3 +18,10 @@ __pycache__
 
 # vscode
 .vscode
+
+# yaml for test
+integration_tests/configs/*.yaml
+
+# direnv
+.envrc
+.direnv

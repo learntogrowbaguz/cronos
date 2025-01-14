@@ -4,18 +4,21 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/crypto-org-chain/cronos/x/cronos/keeper"
-	"github.com/crypto-org-chain/cronos/x/cronos/types"
+	"github.com/crypto-org-chain/cronos/v2/x/cronos/keeper"
+	"github.com/crypto-org-chain/cronos/v2/x/cronos/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 // InitGenesis initializes the capability module's state from a provided genesis
 // state.
 func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) {
-	k.SetParams(ctx, genState.Params)
+	if err := k.SetParams(ctx, genState.Params); err != nil {
+		panic(fmt.Sprintf("Invalid cronos module params: %v\n", genState.Params))
+	}
 
 	for _, m := range genState.ExternalContracts {
-		if !types.IsValidDenomToWrap(m.Denom) {
+		// Only allowed to bootstrap external token at genesis
+		if !types.IsValidIBCDenom(m.Denom) && !types.IsValidGravityDenom(m.Denom) {
 			panic(fmt.Sprintf("Invalid denom to map to contract: %s", m.Denom))
 		}
 		if !common.IsHexAddress(m.Contract) {
@@ -27,7 +30,8 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	}
 
 	for _, m := range genState.AutoContracts {
-		if !types.IsValidDenomToWrap(m.Denom) {
+		// Only allowed to bootstrap external token at genesis
+		if !types.IsValidIBCDenom(m.Denom) && !types.IsValidGravityDenom(m.Denom) {
 			panic(fmt.Sprintf("Invalid denom to map to contract: %s", m.Denom))
 		}
 		if !common.IsHexAddress(m.Contract) {
