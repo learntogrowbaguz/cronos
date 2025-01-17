@@ -89,6 +89,19 @@ There are different tests that can be executed in the following ways:
 
 - unit tests: `make test`
 - [integration tests](./docs/integration-test.md)
+
+### CI Testing
+we use `Nix` as our CI testing environment and use `gomod2nix` to convert go modules into nix packages.
+Therefore, to install `gomod2nix` is required:
+```
+go install github.com/nix-community/gomod2nix@latest
+```
+And then, you can run:
+```
+gomod2nix generate
+```
+to update `gomod2nix.toml` if any go package has changed.
+
 <a id="pystarport" />
 
 ## 9. Pystarport Quick Start
@@ -154,7 +167,7 @@ pystarport supervisorctl stop all
 - [Technical Documentation](http://cronos.org/docs)
 - Community chatrooms (non-technical): [Discord](https://discord.gg/nsp9JTC) [Telegram](https://t.me/CryptoComOfficial)
 - Developer community channel (technical): [![Support Server](https://img.shields.io/discord/783264383978569728.svg?color=7289da&label=Cronos&logo=discord&style=flat-square)](https://discord.gg/pahqHz26q4)
-- [Ethermint](https://github.com/tharsis/ethermint) by Tharsis
+- [Ethermint](https://github.com/evmos/ethermint) by Tharsis
 - [Cosmos SDK documentation](https://docs.cosmos.network)
 - [Cosmos Discord](https://discord.gg/W8trcGV)
 - [Pystarport](https://github.com/crypto-com/pystarport/blob/main/README.md)

@@ -1,11 +1,34 @@
+import os
+import sys
+from pathlib import Path
+
 import pytest
 
-from .network import setup_cronos, setup_geth
+from .network import setup_cronos, setup_custom_cronos, setup_geth
+
+dir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(dir + "/protobuf")
 
 
 def pytest_configure(config):
+    config.addinivalue_line("markers", "unmarked: fallback mark for unmarked tests")
     config.addinivalue_line("markers", "slow: marks tests as slow")
     config.addinivalue_line("markers", "gravity: gravity bridge test cases")
+    config.addinivalue_line("markers", "ica: marks ica tests")
+    config.addinivalue_line("markers", "upgrade: marks upgrade tests")
+    config.addinivalue_line("markers", "ibc: marks default ibc tests")
+    config.addinivalue_line("markers", "ibc_rly_evm: marks ibc_rly_evm tests")
+    config.addinivalue_line("markers", "ibc_rly_gas: marks ibc relayer gas tests")
+    config.addinivalue_line("markers", "ibc_timeout: marks ibc timeout tests")
+    config.addinivalue_line("markers", "ibc_update_client: marks ibc updateclient test")
+    config.addinivalue_line("markers", "gov: marks gov related tests")
+    config.addinivalue_line("markers", "gas: marks gas related tests")
+
+
+def pytest_collection_modifyitems(items, config):
+    for item in items:
+        if not any(item.iter_markers()):
+            item.add_marker("unmarked")
 
 
 @pytest.fixture(scope="session")
@@ -35,10 +58,17 @@ def suspend_capture(pytestconfig):
     yield SuspendGuard()
 
 
-@pytest.fixture(scope="session")
-def cronos(tmp_path_factory):
-    path = tmp_path_factory.mktemp("cronos")
-    yield from setup_cronos(path, 26650)
+@pytest.fixture(scope="session", params=[True])
+def cronos(request, tmp_path_factory):
+    enable_indexer = request.param
+    if enable_indexer:
+        path = tmp_path_factory.mktemp("indexer")
+        yield from setup_custom_cronos(
+            path, 27000, Path(__file__).parent / "configs/enable-indexer.jsonnet"
+        )
+    else:
+        path = tmp_path_factory.mktemp("cronos")
+        yield from setup_cronos(path, 26650)
 
 
 @pytest.fixture(scope="session")

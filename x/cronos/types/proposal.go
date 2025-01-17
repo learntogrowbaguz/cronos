@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -18,15 +18,14 @@ var _ govtypes.Content = &TokenMappingChangeProposal{}
 
 func init() {
 	govtypes.RegisterProposalType(ProposalTypeTokenMappingChange)
-	govtypes.RegisterProposalTypeCodec(&TokenMappingChangeProposal{}, "cronos/TokenMappingChangeProposal")
 }
 
-func NewTokenMappingChangeProposal(title, description, denom string, contractAddr *common.Address) *TokenMappingChangeProposal {
+func NewTokenMappingChangeProposal(title, description, denom, symbol string, decimal uint32, contractAddr *common.Address) *TokenMappingChangeProposal {
 	contract := ""
 	if contractAddr != nil {
 		contract = contractAddr.Hex()
 	}
-	return &TokenMappingChangeProposal{title, description, denom, contract}
+	return &TokenMappingChangeProposal{title, description, denom, contract, symbol, decimal}
 }
 
 // GetTitle returns the title of a parameter change proposal.
@@ -56,7 +55,9 @@ func (tcp TokenMappingChangeProposal) String() string {
   Description: %s
   Denom:       %s
   Contract:    %s
-`, tcp.Title, tcp.Description, tcp.Denom, tcp.Contract))
+  Symbol:      %s
+  Decimal:     %d
+`, tcp.Title, tcp.Description, tcp.Denom, tcp.Contract, tcp.Symbol, tcp.Decimal))
 
 	return b.String()
 }

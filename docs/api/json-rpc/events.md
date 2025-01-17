@@ -10,24 +10,24 @@ messages and index transactions. {synopsis}
 
 ## Pre-requisite Readings
 
-- [Cosmos SDK Events](https://docs.cosmos.network/master/core/events.html) {prereq}
-- [Ethereum's PubSub JSON-RPC API](https://geth.ethereum.org/docs/rpc/pubsub) {prereq}
+- [Cosmos SDK Events](https://docs.cosmos.network/main/core/events) {prereq}
+- [Ethereum's PubSub JSON-RPC API](https://geth.ethereum.org/docs/interacting-with-geth/rpc/pubsub) {prereq}
 
 ## Subscribing to Events
 
 ### SDK and Tendermint Events
 
-It is possible to subscribe to `Events` via Tendermint's [Websocket](https://tendermint.com/docs/app-dev/subscribing-to-events-via-websocket.html#subscribing-to-events-via-websocket).
+It is possible to subscribe to `Events` via Tendermint's [Websocket](https://docs.tendermint.com/v0.34/app-dev/indexing-transactions.html#subscribing-to-transactions).
 This is done by calling the `subscribe` RPC method via Websocket:
 
 ```json
 {
-    "jsonrpc": "2.0",
-    "method": "subscribe",
-    "id": "0",
-    "params": {
-        "query": "tm.event='eventCategory' AND eventType.eventAttribute='attributeValue'"
-    }
+  "jsonrpc": "2.0",
+  "method": "subscribe",
+  "id": "0",
+  "params": {
+    "query": "tm.event='eventCategory' AND eventType.eventAttribute='attributeValue'"
+  }
 }
 ```
 
@@ -47,12 +47,12 @@ has `sender` and `recipient` as `attributes`. Subscribing to this `event` would 
 
 ```json
 {
-    "jsonrpc": "2.0",
-    "method": "subscribe",
-    "id": "0",
-    "params": {
-        "query": "tm.event='Tx' AND ethereum.recipient='hexAddress'"
-    }
+  "jsonrpc": "2.0",
+  "method": "subscribe",
+  "id": "0",
+  "params": {
+    "query": "tm.event='Tx' AND ethereum.recipient='hexAddress'"
+  }
 }
 ```
 
@@ -60,10 +60,10 @@ where `hexAddress` is an Ethereum hex address (eg: `0x11223344556677889900112233
 
 ### Ethereum JSON-RPC Events
 
-Cronos also supports the Ethereum [JSON-RPC](https://eth.wiki/json-rpc/API) filters calls to
-subscribe to [state logs](https://eth.wiki/json-rpc/API#eth_newfilter),
-[blocks](https://eth.wiki/json-rpc/API#eth_newblockfilter) or [pending
-transactions](https://eth.wiki/json-rpc/API#eth_newpendingtransactionfilter) changes.
+Cronos also supports the Ethereum [JSON-RPC](https://ethereum.github.io/execution-apis/api-documentation) filters calls to
+subscribe to [state logs](https://ethereum.github.io/execution-apis/api-documentation#eth_newfilter),
+[blocks](https://ethereum.github.io/execution-apis/api-documentation#eth_newblockfilter) or [pending
+transactions](https://ethereum.github.io/execution-apis/api-documentation#eth_newpendingtransactionfilter) changes.
 
 Under the hood, it uses the Tendermint RPC client's event system to process subscriptions that are
 then formatted to Ethereum-compatible events.
@@ -74,7 +74,7 @@ curl -X POST --data '{"jsonrpc":"2.0","method":"eth_newBlockFilter","params":[],
 {"jsonrpc":"2.0","id":1,"result":"0x3503de5f0c766c68f78a03a3b05036a5"}
 ```
 
-Then you can check if the state changes with the [`eth_getFilterChanges`](https://eth.wiki/json-rpc/API#eth_getfilterchanges) call:
+Then you can check if the state changes with the [`eth_getFilterChanges`](https://ethereum.github.io/execution-apis/api-documentation#eth_getfilterchanges) call:
 
 ```bash
 curl -X POST --data '{"jsonrpc":"2.0","method":"eth_getFilterChanges","params":["0x3503de5f0c766c68f78a03a3b05036a5"],"id":1}' -H "Content-Type: application/json" http://localhost:8545
@@ -108,14 +108,14 @@ ws ws://localhost:8080/websocket
 Since Cronos runs uses Tendermint Core as it's consensus Engine and it's built with the Cosmos
 SDK framework, it inherits the event format from them. However, in order to support the native Web3
 compatibility for websockets of the [Ethereum's
-PubSubAPI](https://geth.ethereum.org/docs/rpc/pubsub), Cronos needs to cast the Tendermint
+PubSubAPI](https://geth.ethereum.org/docs/interacting-with-geth/rpc/pubsub), Cronos needs to cast the Tendermint
 responses retrieved into the Ethereum types.
 
 You can start a connection with the Ethereum websocket using the `--json-rpc.ws-address` flag when starting
-the node (default `"0.0.0.0:8546"`):
+the node (default `"127.0.0.1:8546"`):
 
 ```bash
-cronosd start  --json-rpc.address"0.0.0.0:8545" --json-rpc.ws-address="0.0.0.0:8546" --evm.rpc.api="eth,web3,net,txpool,debug" --json-rpc.enable
+cronosd start  --json-rpc.address"127.0.0.1:8545" --json-rpc.ws-address="127.0.0.1:8546" --evm.rpc.api="eth,web3,net,txpool,debug" --json-rpc.enable
 ```
 
 Then, start a websocket subscription with [`ws`](https://github.com/hashrocket/ws)

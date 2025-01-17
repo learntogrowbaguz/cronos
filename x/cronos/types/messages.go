@@ -1,18 +1,28 @@
 package types
 
 import (
+	"bytes"
+
+	stderrors "errors"
+
+	"cosmossdk.io/errors"
+	"filippo.io/age"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const (
-	TypeMsgConvertVouchers    = "ConvertVouchers"
-	TypeMsgTransferTokens     = "TransferTokens"
-	TypeMsgUpdateTokenMapping = "UpdateTokenMapping"
-)
+const TypeMsgUpdateTokenMapping = "UpdateTokenMapping"
 
-var _ sdk.Msg = &MsgConvertVouchers{}
+var (
+	_ sdk.Msg = &MsgConvertVouchers{}
+	_ sdk.Msg = &MsgTransferTokens{}
+	_ sdk.Msg = &MsgUpdateTokenMapping{}
+	_ sdk.Msg = &MsgUpdateParams{}
+	_ sdk.Msg = &MsgTurnBridge{}
+	_ sdk.Msg = &MsgUpdatePermissions{}
+	_ sdk.Msg = &MsgStoreBlockList{}
+)
 
 func NewMsgConvertVouchers(address string, coins sdk.Coins) *MsgConvertVouchers {
 	return &MsgConvertVouchers{
@@ -21,43 +31,18 @@ func NewMsgConvertVouchers(address string, coins sdk.Coins) *MsgConvertVouchers 
 	}
 }
 
-// Route ...
-func (msg MsgConvertVouchers) Route() string {
-	return RouterKey
-}
-
-// Type ...
-func (msg MsgConvertVouchers) Type() string {
-	return TypeMsgConvertVouchers
-}
-
-// GetSigners ...
-func (msg *MsgConvertVouchers) GetSigners() []sdk.AccAddress {
-	address, err := sdk.AccAddressFromBech32(msg.Address)
-	if err != nil {
-		panic(err)
-	}
-	return []sdk.AccAddress{address}
-}
-
-// GetSignBytes ...
-func (msg *MsgConvertVouchers) GetSignBytes() []byte {
-	bz := ModuleCdc.MustMarshalJSON(msg)
-	return sdk.MustSortJSON(bz)
-}
-
 // ValidateBasic ...
 func (msg *MsgConvertVouchers) ValidateBasic() error {
 	_, err := sdk.AccAddressFromBech32(msg.Address)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid address (%s)", err)
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid address (%s)", err)
 	}
 	if !msg.Coins.IsValid() {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
+		return errors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
 	}
 
 	if !msg.Coins.IsAllPositive() {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
+		return errors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
 	}
 	return nil
 }
@@ -72,46 +57,21 @@ func NewMsgTransferTokens(from string, to string, coins sdk.Coins) *MsgTransferT
 	}
 }
 
-// Route ...
-func (msg MsgTransferTokens) Route() string {
-	return RouterKey
-}
-
-// Type ...
-func (msg MsgTransferTokens) Type() string {
-	return TypeMsgTransferTokens
-}
-
-// GetSigners ...
-func (msg *MsgTransferTokens) GetSigners() []sdk.AccAddress {
-	from, err := sdk.AccAddressFromBech32(msg.From)
-	if err != nil {
-		panic(err)
-	}
-	return []sdk.AccAddress{from}
-}
-
-// GetSignBytes ...
-func (msg *MsgTransferTokens) GetSignBytes() []byte {
-	bz := ModuleCdc.MustMarshalJSON(msg)
-	return sdk.MustSortJSON(bz)
-}
-
 // ValidateBasic ...
 func (msg *MsgTransferTokens) ValidateBasic() error {
 	_, err := sdk.AccAddressFromBech32(msg.From)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid address address (%s)", err)
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid address address (%s)", err)
 	}
 
 	// TODO, validate TO address format
 
 	if !msg.Coins.IsValid() {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
+		return errors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
 	}
 
 	if !msg.Coins.IsAllPositive() {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
+		return errors.Wrap(sdkerrors.ErrInvalidCoins, msg.Coins.String())
 	}
 	return nil
 }
@@ -119,11 +79,13 @@ func (msg *MsgTransferTokens) ValidateBasic() error {
 var _ sdk.Msg = &MsgUpdateTokenMapping{}
 
 // NewMsgUpdateTokenMapping ...
-func NewMsgUpdateTokenMapping(admin string, denom string, contract string) *MsgUpdateTokenMapping {
+func NewMsgUpdateTokenMapping(admin string, denom string, contract string, symbol string, decimal uint32) *MsgUpdateTokenMapping {
 	return &MsgUpdateTokenMapping{
 		Sender:   admin,
 		Denom:    denom,
 		Contract: contract,
+		Symbol:   symbol,
+		Decimal:  decimal,
 	}
 }
 
@@ -140,23 +102,18 @@ func (msg *MsgUpdateTokenMapping) GetSigners() []sdk.AccAddress {
 func (msg *MsgUpdateTokenMapping) ValidateBasic() error {
 	_, err := sdk.AccAddressFromBech32(msg.Sender)
 	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sender address (%s)", err)
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sender address (%s)", err)
 	}
 
-	if !IsValidDenomToWrap(msg.Denom) {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidRequest, "invalid denom to wrap (%s)", msg.Denom)
+	if !IsValidCoinDenom(msg.Denom) {
+		return errors.Wrapf(sdkerrors.ErrInvalidRequest, "invalid denom format (%s)", msg.Denom)
 	}
 
 	if !common.IsHexAddress(msg.Contract) {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidRequest, "invalid contract address (%s)", msg.Contract)
+		return errors.Wrapf(sdkerrors.ErrInvalidRequest, "invalid contract address (%s)", msg.Contract)
 	}
 
 	return nil
-}
-
-// Route ...
-func (msg MsgUpdateTokenMapping) Route() string {
-	return RouterKey
 }
 
 // Type ...
@@ -164,8 +121,92 @@ func (msg MsgUpdateTokenMapping) Type() string {
 	return TypeMsgUpdateTokenMapping
 }
 
-// GetSignBytes ...
-func (msg *MsgUpdateTokenMapping) GetSignBytes() []byte {
-	bz := ModuleCdc.MustMarshalJSON(msg)
-	return sdk.MustSortJSON(bz)
+// NewMsgTurnBridge ...
+func NewMsgTurnBridge(admin string, enable bool) *MsgTurnBridge {
+	return &MsgTurnBridge{
+		Sender: admin,
+		Enable: enable,
+	}
+}
+
+// ValidateBasic ...
+func (msg *MsgTurnBridge) ValidateBasic() error {
+	_, err := sdk.AccAddressFromBech32(msg.Sender)
+	if err != nil {
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sender address (%s)", err)
+	}
+
+	return nil
+}
+
+func NewMsgUpdateParams(authority string, params Params) *MsgUpdateParams {
+	return &MsgUpdateParams{
+		Authority: authority,
+		Params:    params,
+	}
+}
+
+// ValidateBasic does a sanity check on the provided data.
+func (msg *MsgUpdateParams) ValidateBasic() error {
+	if _, err := sdk.AccAddressFromBech32(msg.Authority); err != nil {
+		return errors.Wrap(err, "invalid authority address")
+	}
+
+	if err := msg.Params.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// NewMsgUpdatePermissions ...
+func NewMsgUpdatePermissions(from string, address string, permissions uint64) *MsgUpdatePermissions {
+	return &MsgUpdatePermissions{
+		From:        from,
+		Address:     address,
+		Permissions: permissions,
+	}
+}
+
+// ValidateBasic ...
+func (msg *MsgUpdatePermissions) ValidateBasic() error {
+	_, err := sdk.AccAddressFromBech32(msg.From)
+	if err != nil {
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sender address (%s)", err)
+	}
+	_, err = sdk.AccAddressFromBech32(msg.Address)
+	if err != nil {
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid target address (%s)", err)
+	}
+
+	return nil
+}
+
+func NewMsgStoreBlockList(from string, blob []byte) *MsgStoreBlockList {
+	return &MsgStoreBlockList{
+		From: from,
+		Blob: blob,
+	}
+}
+
+var errDummyIdentity = stderrors.New("dummy")
+
+type dummyIdentity struct{}
+
+func (i *dummyIdentity) Unwrap(stanzas []*age.Stanza) ([]byte, error) {
+	return nil, errDummyIdentity
+}
+
+func (msg *MsgStoreBlockList) ValidateBasic() error {
+	_, err := sdk.AccAddressFromBech32(msg.From)
+	if err != nil {
+		return errors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sender address (%s)", err)
+	}
+	// skip heavy operation in Decrypt by early return with errDummyIdentity in
+	// https://github.com/FiloSottile/age/blob/v1.1.1/age.go#L197
+	_, err = age.Decrypt(bytes.NewBuffer(msg.Blob), new(dummyIdentity))
+	if err != nil && err != errDummyIdentity {
+		return err
+	}
+	return nil
 }

@@ -6,13 +6,16 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/armon/go-metrics"
+	sdkmath "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	ibctransfertypes "github.com/cosmos/ibc-go/v2/modules/apps/transfer/types"
-	ibcclienttypes "github.com/cosmos/ibc-go/v2/modules/core/02-client/types"
-	"github.com/crypto-org-chain/cronos/x/cronos/types"
+	"github.com/hashicorp/go-metrics"
+
+	errorsmod "cosmossdk.io/errors"
+	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
+	ibcclienttypes "github.com/cosmos/ibc-go/v8/modules/core/02-client/types"
+	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	"github.com/crypto-org-chain/cronos/v2/x/cronos/types"
 )
 
 func (k Keeper) ConvertVouchersToEvmCoins(ctx sdk.Context, from string, coins sdk.Coins) error {
@@ -27,7 +30,7 @@ func (k Keeper) ConvertVouchersToEvmCoins(ctx sdk.Context, from string, coins sd
 		switch c.Denom {
 		case params.IbcCroDenom:
 			if params.IbcCroDenom == "" {
-				return sdkerrors.Wrap(types.ErrIbcCroDenomEmpty, "ibc is disabled")
+				return errorsmod.Wrap(types.ErrIbcCroDenomEmpty, "ibc is disabled")
 			}
 
 			// Send ibc tokens to escrow address
@@ -37,7 +40,7 @@ func (k Keeper) ConvertVouchersToEvmCoins(ctx sdk.Context, from string, coins sd
 			}
 			// Compute new amount, because basecro is a 8 decimals token, we need to multiply by 10^10 to make it
 			// a 18 decimals token
-			amount18dec := sdk.NewCoin(evmParams.EvmDenom, c.Amount.Mul(sdk.NewIntFromBigInt(types.TenPowTen)))
+			amount18dec := sdk.NewCoin(evmParams.EvmDenom, c.Amount.Mul(sdkmath.NewIntFromBigInt(types.TenPowTen)))
 
 			// Mint new evm tokens
 			if err := k.bankKeeper.MintCoins(
@@ -54,8 +57,7 @@ func (k Keeper) ConvertVouchersToEvmCoins(ctx sdk.Context, from string, coins sd
 			}
 
 		default:
-			// TODO use autoDeploy boolean in Params.go
-			err := k.ConvertCoinFromNativeToCRC20(ctx, common.BytesToAddress(acc.Bytes()), c, params.EnableAutoDeployment)
+			err := k.ConvertCoinFromNativeToCRC21(ctx, common.BytesToAddress(acc.Bytes()), c, params.EnableAutoDeployment)
 			if err != nil {
 				return err
 			}
@@ -75,7 +77,7 @@ func (k Keeper) ConvertVouchersToEvmCoins(ctx sdk.Context, from string, coins sd
 	return nil
 }
 
-func (k Keeper) IbcTransferCoins(ctx sdk.Context, from, destination string, coins sdk.Coins) error {
+func (k Keeper) IbcTransferCoins(ctx sdk.Context, from, destination string, coins sdk.Coins, channelId string) error {
 	acc, err := sdk.AccAddressFromBech32(from)
 	if err != nil {
 		return err
@@ -92,7 +94,7 @@ func (k Keeper) IbcTransferCoins(ctx sdk.Context, from, destination string, coin
 		switch c.Denom {
 		case evmParams.EvmDenom:
 			// Compute the remainder, we won't transfer anything lower than 10^10
-			amount8decRem := c.Amount.Mod(sdk.NewIntFromBigInt(types.TenPowTen))
+			amount8decRem := c.Amount.Mod(sdkmath.NewIntFromBigInt(types.TenPowTen))
 			amountToBurn := c.Amount.Sub(amount8decRem)
 			if amountToBurn.IsZero() {
 				// Amount too small
@@ -113,7 +115,7 @@ func (k Keeper) IbcTransferCoins(ctx sdk.Context, from, destination string, coin
 
 			// Transfer ibc tokens back to the user
 			// We divide by 10^10 to come back to an 8decimals token
-			amount8dec := c.Amount.Quo(sdk.NewIntFromBigInt(types.TenPowTen))
+			amount8dec := c.Amount.Quo(sdkmath.NewIntFromBigInt(types.TenPowTen))
 			ibcCoin := sdk.NewCoin(params.IbcCroDenom, amount8dec)
 			if err := k.bankKeeper.SendCoinsFromModuleToAccount(
 				ctx, types.ModuleName, acc, sdk.NewCoins(ibcCoin),
@@ -121,17 +123,21 @@ func (k Keeper) IbcTransferCoins(ctx sdk.Context, from, destination string, coin
 				return err
 			}
 
-			err = k.ibcSendTransfer(ctx, acc, destination, ibcCoin)
+			// No need to specify the channelId because it's not a source token
+			err = k.ibcSendTransfer(ctx, acc, destination, ibcCoin, "")
 			if err != nil {
 				return err
 			}
 
 		default:
+			if !types.IsValidIBCDenom(c.Denom) && !types.IsValidCronosDenom(c.Denom) {
+				return fmt.Errorf("the coin %s is neither an ibc voucher or a cronos token", c.Denom)
+			}
 			_, found := k.GetContractByDenom(ctx, c.Denom)
 			if !found {
 				return fmt.Errorf("coin %s is not supported", c.Denom)
 			}
-			err = k.ibcSendTransfer(ctx, acc, destination, c)
+			err = k.ibcSendTransfer(ctx, acc, destination, c, channelId)
 			if err != nil {
 				return err
 			}
@@ -152,11 +158,19 @@ func (k Keeper) IbcTransferCoins(ctx sdk.Context, from, destination string, coin
 	return nil
 }
 
-func (k Keeper) ibcSendTransfer(ctx sdk.Context, sender sdk.AccAddress, destination string, coin sdk.Coin) error {
-	// Coin needs to be a voucher so that we can extract the channel id from the denom
-	channelID, err := k.GetSourceChannelID(ctx, coin.Denom)
-	if err != nil {
-		return err
+func (k Keeper) ibcSendTransfer(ctx sdk.Context, sender sdk.AccAddress, destination string, coin sdk.Coin, channelId string) error {
+	if types.IsSourceCoin(coin.Denom) {
+		if !channeltypes.IsValidChannelID(channelId) {
+			return errors.New("invalid channel id for ibc transfer of source token")
+		}
+	} else {
+		// If it is not source, then coin is a voucher so we can extract the channel id from the denom
+		channelDenom := coin.Denom
+		sourceChannelID, err := k.GetSourceChannelID(ctx, channelDenom)
+		if err != nil {
+			return err
+		}
+		channelId = sourceChannelID
 	}
 
 	// Transfer coins to receiver through IBC
@@ -165,13 +179,17 @@ func (k Keeper) ibcSendTransfer(ctx sdk.Context, sender sdk.AccAddress, destinat
 	params := k.GetParams(ctx)
 	timeoutTimestamp := uint64(ctx.BlockTime().UnixNano()) + params.IbcTimeout
 	timeoutHeight := ibcclienttypes.ZeroHeight()
-	return k.transferKeeper.SendTransfer(
-		ctx,
-		ibctransfertypes.PortID,
-		channelID,
-		coin,
-		sender,
-		destination,
-		timeoutHeight,
-		timeoutTimestamp)
+	msg := ibctransfertypes.MsgTransfer{
+		SourcePort:       ibctransfertypes.PortID,
+		SourceChannel:    channelId,
+		Token:            coin,
+		Sender:           sender.String(),
+		Receiver:         destination,
+		TimeoutHeight:    timeoutHeight,
+		TimeoutTimestamp: timeoutTimestamp,
+	}
+	if _, err := k.transferKeeper.Transfer(ctx, &msg); err != nil {
+		return err
+	}
+	return nil
 }
